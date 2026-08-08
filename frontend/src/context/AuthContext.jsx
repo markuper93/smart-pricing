@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/client';
+import { trackLogout } from '../api/tracker';
 
 const AuthContext = createContext(null);
 
@@ -31,6 +32,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    trackLogout();
     localStorage.removeItem('token');
     setUser(null);
   };

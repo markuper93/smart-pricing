@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/client';
-import { Upload, UserPlus, Trash2, RotateCcw, Key, Database, Users, FileText, ChevronDown, Shield, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Upload, UserPlus, Trash2, RotateCcw, Key, Database, Users, FileText, ChevronDown, Shield, Eye, EyeOff, RefreshCw, Activity, Clock, Globe } from 'lucide-react';
 
 export default function AdminPanel() {
   const [tab, setTab] = useState('users');
@@ -22,6 +22,13 @@ export default function AdminPanel() {
   const [uploadYear, setUploadYear] = useState(new Date().getFullYear());
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef();
+
+  // Activity state
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [activitySummary, setActivitySummary] = useState([]);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [activityFilter, setActivityFilter] = useState({ hours: 24, userId: '', action: '' });
+  const [activityLoading, setActivityLoading] = useState(false);
 
   const months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
@@ -127,6 +134,65 @@ export default function AdminPanel() {
     loadData();
   };
 
+  // Activity functions
+  const loadActivity = async () => {
+    setActivityLoading(true);
+    try {
+      const params = { hours: activityFilter.hours };
+      if (activityFilter.userId) params.user_id = activityFilter.userId;
+      if (activityFilter.action) params.action = activityFilter.action;
+      const [logs, summary, online] = await Promise.all([
+        api.get('/activity/logs', { params }),
+        api.get('/activity/summary', { params: { hours: activityFilter.hours } }),
+        api.get('/activity/online'),
+      ]);
+      setActivityLogs(logs.data.logs);
+      setActivitySummary(summary.data.users);
+      setOnlineUsers(online.data.online);
+    } catch (err) {
+      console.error('Activity load error:', err);
+    }
+    setActivityLoading(false);
+  };
+
+  useEffect(() => { if (tab === 'activity') loadActivity(); }, [tab, activityFilter]);
+
+  const ACTION_LABELS = {
+    login: 'כניסה',
+    logout: 'יציאה',
+    page_view: 'צפייה בדף',
+    compare: 'השוואה',
+    export_pdf: 'ייצוא PDF',
+    export_excel: 'ייצוא Excel',
+    upload_csv: 'העלאת CSV',
+    create_group: 'יצירת קבוצה',
+    chat_message: 'צ\'אט AI',
+  };
+
+  const PAGE_LABELS = {
+    '/dashboard': 'לוח בקרה',
+    '/groups': 'קבוצות מעקב',
+    '/reports': 'דוחות',
+    '/chat': 'צ\'אט AI',
+    '/admin': 'ניהול מערכת',
+    '/login': 'התחברות',
+  };
+
+  const formatTime = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+  };
+
+  const timeAgo = (iso) => {
+    if (!iso) return '';
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60) return 'עכשיו';
+    if (diff < 3600) return `לפני ${Math.floor(diff / 60)} דק'`;
+    if (diff < 86400) return `לפני ${Math.floor(diff / 3600)} שע'`;
+    return `לפני ${Math.floor(diff / 86400)} ימים`;
+  };
+
   if (loading) return <div className="flex justify-center py-20"><div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full"></div></div>;
 
   return (
@@ -142,12 +208,13 @@ export default function AdminPanel() {
         </div>
       )}
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-6 flex-wrap">
         {[
           { id: 'users', icon: Users, label: 'משתמשים' },
           { id: 'defaults', icon: Shield, label: 'קבוצות ברירת מחדל' },
           { id: 'upload', icon: Upload, label: 'העלאת CSV' },
           { id: 'data', icon: Database, label: 'נתונים' },
+          { id: 'activity', icon: Activity, label: 'פעילות משתמשים' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg transition-all ${tab === t.id ? 'bg-primary-600/20 text-primary-300 border border-primary-500/30' : 'glass-light text-dark-300 hover:text-white'}`}>
@@ -367,6 +434,122 @@ export default function AdminPanel() {
                 {priceLists.length === 0 && <tr><td colSpan="5" className="text-center text-dark-400 py-4">אין מחירונים</td></tr>}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Activity Tab */}
+      {tab === 'activity' && (
+        <div className="space-y-6">
+          {/* Online Users */}
+          <div className="glass p-5">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Globe className="w-5 h-5 text-green-400" /> מחוברים עכשיו
+              <span className="text-sm text-dark-400 font-normal">(ב-5 דקות האחרונות)</span>
+            </h3>
+            {onlineUsers.length > 0 ? (
+              <div className="flex flex-wrap gap-3">
+                {onlineUsers.map(u => (
+                  <div key={u.user_id} className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-lg">
+                    <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                    <span className="text-white text-sm font-medium">{u.username}</span>
+                    <span className="text-dark-400 text-xs">{timeAgo(u.last_active)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-dark-400 text-sm">אין משתמשים מחוברים כרגע</p>
+            )}
+          </div>
+
+          {/* Summary */}
+          <div className="glass p-5">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Activity className="w-5 h-5" /> סיכום פעילות
+            </h3>
+            <div className="flex gap-3 mb-4">
+              <select value={activityFilter.hours} onChange={e => setActivityFilter(f => ({...f, hours: +e.target.value}))}
+                className="px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-white text-sm">
+                <option value={1}>שעה אחרונה</option>
+                <option value={6}>6 שעות</option>
+                <option value={24}>24 שעות</option>
+                <option value={168}>שבוע</option>
+                <option value={720}>חודש</option>
+              </select>
+            </div>
+            {activitySummary.length > 0 ? (
+              <div className="space-y-3">
+                {activitySummary.map(u => (
+                  <div key={u.user_id} className="p-3 bg-dark-800/50 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white font-medium">{u.username}</span>
+                      <span className="text-dark-400 text-xs">פעיל {timeAgo(u.last_active)}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {u.actions.map(a => (
+                        <span key={a.action} className="text-xs px-2 py-1 bg-dark-700 rounded text-dark-300">
+                          {ACTION_LABELS[a.action] || a.action}: {a.count}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-dark-400 text-sm">אין פעילות בתקופה זו</p>
+            )}
+          </div>
+
+          {/* Detailed Logs */}
+          <div className="glass overflow-hidden">
+            <div className="p-4 border-b border-dark-700 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Clock className="w-5 h-5" /> לוג פעילות
+              </h3>
+              <div className="flex gap-2">
+                <select value={activityFilter.userId} onChange={e => setActivityFilter(f => ({...f, userId: e.target.value}))}
+                  className="px-2 py-1 bg-dark-800 border border-dark-600 rounded text-white text-xs">
+                  <option value="">כל המשתמשים</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+                </select>
+                <select value={activityFilter.action} onChange={e => setActivityFilter(f => ({...f, action: e.target.value}))}
+                  className="px-2 py-1 bg-dark-800 border border-dark-600 rounded text-white text-xs">
+                  <option value="">כל הפעולות</option>
+                  {Object.entries(ACTION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <table className="report-table">
+                <thead>
+                  <tr><th>זמן</th><th>משתמש</th><th>פעולה</th><th>פרטים</th></tr>
+                </thead>
+                <tbody>
+                  {activityLogs.map(log => (
+                    <tr key={log.id}>
+                      <td className="text-xs text-dark-400 whitespace-nowrap">{formatTime(log.created_at)}</td>
+                      <td className="font-medium text-white text-sm">{log.username}</td>
+                      <td>
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          log.action === 'login' ? 'bg-green-500/20 text-green-300' :
+                          log.action === 'logout' ? 'bg-red-500/20 text-red-300' :
+                          log.action === 'page_view' ? 'bg-blue-500/20 text-blue-300' :
+                          'bg-dark-700 text-dark-300'
+                        }`}>
+                          {ACTION_LABELS[log.action] || log.action}
+                        </span>
+                      </td>
+                      <td className="text-xs text-dark-400">
+                        {log.details?.page && (PAGE_LABELS[log.details.page] || log.details.page)}
+                        {log.details?.duration_seconds && ` (${Math.round(log.details.duration_seconds)}s)`}
+                        {log.details?.label && log.details.label}
+                      </td>
+                    </tr>
+                  ))}
+                  {activityLogs.length === 0 && <tr><td colSpan="4" className="text-center text-dark-400 py-4">אין לוגים</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

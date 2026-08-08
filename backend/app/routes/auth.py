@@ -7,6 +7,7 @@ import re
 import secrets
 from ..database import get_db
 from ..models.user import User
+from ..models.activity import ActivityLog
 from ..utils.auth import hash_password, verify_password, create_access_token, get_current_user
 from ..config import ACCESS_TOKEN_EXPIRE_MINUTES
 
@@ -49,6 +50,9 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="החשבון מושבת")
     # Always issue a token (even when password change is required)
     token = create_access_token({"sub": str(user.id)})
+    # Log login
+    db.add(ActivityLog(user_id=user.id, username=user.username, action="login", ip_address=None))
+    db.commit()
     # Check OTP first login
     if user.force_password_change and user.otp_code:
         if verify_password(req.password, user.otp_code):
@@ -69,6 +73,12 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         "is_admin": user.is_admin,
         "username": user.username,
     }
+
+@router.post("/logout")
+def logout(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.add(ActivityLog(user_id=current_user.id, username=current_user.username, action="logout"))
+    db.commit()
+    return {"message": "התנתקת בהצלחה"}
 
 @router.post("/change-password")
 def change_password(req: ChangePasswordRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

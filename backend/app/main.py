@@ -7,7 +7,8 @@ import json
 from .database import engine, Base, SessionLocal
 from .models.user import User, TrackingGroup, TrackingItem
 from .models.price_data import PriceList, PriceEntry
-from .routes import auth, admin, user, reports, chat
+from .models.activity import ActivityLog
+from .routes import auth, admin, user, reports, chat, activity
 from .utils.auth import hash_password
 from .config import (
     DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_PASS,
@@ -99,6 +100,7 @@ app.include_router(admin.router)
 app.include_router(user.router)
 app.include_router(reports.router)
 app.include_router(chat.router)
+app.include_router(activity.router)
 
 @app.on_event("startup")
 def seed_admin():

@@ -1,5 +1,7 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
+import { trackPageView } from './api/tracker';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import GroupBuilder from './pages/GroupBuilder';
@@ -22,20 +24,32 @@ function AdminRoute({ children }) {
   return isAdmin ? children : <Navigate to="/dashboard" />;
 }
 
+function PageTracker() {
+  const location = useLocation();
+  const { user } = useAuth();
+  useEffect(() => {
+    if (user) trackPageView(location.pathname);
+  }, [location.pathname, user]);
+  return null;
+}
+
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
-      <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-        <Route index element={<Navigate to="/dashboard" />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="groups" element={<GroupBuilder />} />
-        <Route path="reports" element={<Reports />} />
-        <Route path="chat" element={<AIChat />} />
-        <Route path="admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
-      </Route>
-    </Routes>
+    <>
+      <PageTracker />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
+        <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+          <Route index element={<Navigate to="/dashboard" />} />
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="groups" element={<GroupBuilder />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="chat" element={<AIChat />} />
+          <Route path="admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
+        </Route>
+      </Routes>
+    </>
   );
 }
