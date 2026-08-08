@@ -33,7 +33,7 @@ class UserResponse(BaseModel):
 def list_users(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     return db.query(User).filter(User.is_admin == False).all()
 
-@router.post("/users", response_model=UserResponse)
+@router.post("/users")
 def create_user(req: CreateUserRequest, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     if db.query(User).filter((User.email == req.email) | (User.username == req.username)).first():
         raise HTTPException(status_code=400, detail="משתמש עם מייל או שם משתמש זה כבר קיים")
