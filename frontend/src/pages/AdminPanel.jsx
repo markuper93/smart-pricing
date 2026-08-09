@@ -181,12 +181,15 @@ export default function AdminPanel() {
   const formatTime = (iso) => {
     if (!iso) return '';
     const d = new Date(iso);
-    return d.toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+    // Convert to Israel time (UTC+3)
+    const israel = new Date(d.getTime() + 3 * 60 * 60 * 1000);
+    return israel.toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'UTC' });
   };
 
   const timeAgo = (iso) => {
     if (!iso) return '';
     const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 0) return 'עכשיו';
     if (diff < 60) return 'עכשיו';
     if (diff < 3600) return `לפני ${Math.floor(diff / 60)} דק'`;
     if (diff < 86400) return `לפני ${Math.floor(diff / 3600)} שע'`;
