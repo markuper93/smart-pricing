@@ -18,8 +18,19 @@ except ImportError:
 
 def _register_hebrew_font():
     """Register a Hebrew-capable font."""
+    # Look for DejaVu Sans bundled with the project first
+    bundled = os.path.join(os.path.dirname(__file__), '..', '..', 'fonts', 'DejaVuSans.ttf')
+    if os.path.exists(bundled):
+        try:
+            pdfmetrics.registerFont(TTFont('DejaVuSans', bundled))
+            return 'DejaVuSans'
+        except Exception:
+            pass
+
     font_candidates = [
+        ("DejaVuSans", os.path.join(os.path.dirname(__file__), '..', '..', 'fonts', 'DejaVuSans.ttf')),
         ("Arial", "C:/Windows/Fonts/arial.ttf"),
+        ("Arial", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
         ("Arial", "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf"),
         ("David", "C:/Windows/Fonts/david.ttf"),
     ]
