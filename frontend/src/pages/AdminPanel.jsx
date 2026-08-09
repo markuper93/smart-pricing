@@ -181,9 +181,7 @@ export default function AdminPanel() {
   const formatTime = (iso) => {
     if (!iso) return '';
     const d = new Date(iso);
-    // Convert to Israel time (UTC+3)
-    const israel = new Date(d.getTime() + 3 * 60 * 60 * 1000);
-    return israel.toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+    return d.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
   };
 
   const timeAgo = (iso) => {
