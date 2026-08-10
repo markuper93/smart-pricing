@@ -180,13 +180,15 @@ export default function AdminPanel() {
 
   const formatTime = (iso) => {
     if (!iso) return '';
-    const d = new Date(iso);
+    // Force UTC interpretation (server stores UTC without timezone suffix)
+    const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
     return d.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
   };
 
   const timeAgo = (iso) => {
     if (!iso) return '';
-    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+    const diff = Math.floor((Date.now() - d.getTime()) / 1000);
     if (diff < 0) return 'עכשיו';
     if (diff < 60) return 'עכשיו';
     if (diff < 3600) return `לפני ${Math.floor(diff / 60)} דק'`;
