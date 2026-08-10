@@ -8,6 +8,7 @@ import secrets
 from ..database import get_db
 from ..models.user import User, TrackingGroup, TrackingItem
 from ..models.price_data import PriceList, PriceEntry
+from ..models.activity import ActivityLog
 from ..utils.auth import hash_password, require_admin
 from ..utils.csv_parser import parse_csv
 from ..config import UPLOAD_DIR
@@ -55,6 +56,8 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="משתמש לא נמצא")
+    # Delete activity logs first (FK constraint)
+    db.query(ActivityLog).filter(ActivityLog.user_id == user_id).delete()
     db.delete(user)
     db.commit()
     return {"message": "משתמש נמחק"}

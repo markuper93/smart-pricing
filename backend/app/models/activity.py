@@ -5,7 +5,7 @@ from ..database import Base
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     username = Column(String(100), nullable=False)  # Denormalized for fast queries
     action = Column(String(50), nullable=False, index=True)  # login, logout, page_view, compare, export, upload, etc.
     details = Column(Text, nullable=True)  # JSON: {page, params, ...}
