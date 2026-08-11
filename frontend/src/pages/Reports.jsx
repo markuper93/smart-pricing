@@ -39,6 +39,52 @@ export default function Reports() {
 
   const exportFile = async (type, retries = 3) => {
     setExporting(type);
+    setError('');
+
+    // Get token for URL-based download
+    const token = localStorage.getItem('token');
+
+    // For Excel, use window.open (bypasses corporate AJAX filters)
+    if (type === 'excel') {
+      try {
+        // First, run comparison to get data
+        const compRes = await api.post('/reports/compare', {
+          group_id: +selectedGroup,
+          month_a_id: +monthA,
+          month_b_id: +monthB,
+        });
+
+        // Use fetch with blob for Excel
+        const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/reports/export/excel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ group_id: +selectedGroup, month_a_id: +monthA, month_b_id: +monthB }),
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'report.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        setExporting('');
+        return;
+      } catch (err) {
+        setError('שגיאה בייצוא Excel — נסה שוב');
+        setExporting('');
+        return;
+      }
+    }
+
+    // PDF stays with axios
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         const res = await api.post(`/reports/export/${type}`, {
