@@ -11,6 +11,7 @@ export default function Reports() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState('');
 
   useEffect(() => {
     Promise.all([
@@ -36,18 +37,36 @@ export default function Reports() {
     setLoading(false);
   };
 
-  const exportFile = async (type) => {
-    try {
-      const res = await api.post(`/reports/export/${type}`, { group_id: +selectedGroup, month_a_id: +monthA, month_b_id: +monthB }, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = res.headers['content-disposition']?.split('filename=')[1]?.replace(/"/g, '') || `report.${type === 'pdf' ? 'pdf' : 'xlsx'}`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      setError('שגיאה בייצוא');
+  const exportFile = async (type, retries = 3) => {
+    setExporting(type);
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const res = await api.post(`/reports/export/${type}`, {
+          group_id: +selectedGroup,
+          month_a_id: +monthA,
+          month_b_id: +monthB,
+        }, { responseType: 'blob', timeout: 60000 });
+        const url = window.URL.createObjectURL(new Blob([res.data]));
+        const a = document.createElement('a');
+        a.href = url;
+        const cd = res.headers['content-disposition'] || '';
+        const match = cd.match(/filename="?([^";\n]+)"?/);
+        a.download = match ? match[1] : `report.${type === 'pdf' ? 'pdf' : 'xlsx'}`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        setExporting('');
+        setError('');
+        return;
+      } catch (err) {
+        if (attempt < retries) {
+          setError(`מנסה שוב... (${attempt}/${retries}) — השרת מתעורר`);
+          await new Promise(r => setTimeout(r, 5000));
+        } else {
+          setError('שגיאה בייצוא — נסה שוב בעוד דקה');
+        }
+      }
     }
+    setExporting('');
   };
 
   return (
@@ -96,11 +115,13 @@ export default function Reports() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-white">{report.title}</h2>
             <div className="flex gap-2">
-              <button onClick={() => exportFile('pdf')} className="flex items-center gap-2 px-4 py-2 bg-red-600/20 text-red-300 border border-red-500/30 rounded-lg hover:bg-red-600/30 transition-colors">
-                <FileDown className="w-4 h-4" /> PDF
+              <button onClick={() => exportFile('pdf')} disabled={!!exporting}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600/20 text-red-300 border border-red-500/30 rounded-lg hover:bg-red-600/30 transition-colors disabled:opacity-50">
+                <FileDown className="w-4 h-4" /> {exporting === 'pdf' ? 'מייצא...' : 'PDF'}
               </button>
-              <button onClick={() => exportFile('excel')} className="flex items-center gap-2 px-4 py-2 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-lg hover:bg-emerald-600/30 transition-colors">
-                <FileSpreadsheet className="w-4 h-4" /> Excel
+              <button onClick={() => exportFile('excel')} disabled={!!exporting}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-lg hover:bg-emerald-600/30 transition-colors disabled:opacity-50">
+                <FileSpreadsheet className="w-4 h-4" /> {exporting === 'excel' ? 'מייצא...' : 'Excel'}
               </button>
             </div>
           </div>
