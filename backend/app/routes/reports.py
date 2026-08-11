@@ -117,6 +117,6 @@ def export_excel(req: CompareRequest, db: Session = Depends(get_db), current_use
     return FileResponse(
         filepath,
         filename=filename,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"X-Download-Options": "noopen"},
+        media_type="application/octet-stream",
+        headers={"X-Download-Options": "noopen", "Content-Disposition": f'attachment; filename="{filename}"'},
     )
