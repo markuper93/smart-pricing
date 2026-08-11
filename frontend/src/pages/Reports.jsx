@@ -37,78 +37,63 @@ export default function Reports() {
     setLoading(false);
   };
 
+  const downloadBlob = (blob, filename) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
   const exportFile = async (type, retries = 3) => {
     setExporting(type);
     setError('');
 
-    // Get token for URL-based download
-    const token = localStorage.getItem('token');
+    const payload = { group_id: +selectedGroup, month_a_id: +monthA, month_b_id: +monthB };
 
-    // For Excel, use window.open (bypasses corporate AJAX filters)
     if (type === 'excel') {
-      try {
-        // First, run comparison to get data
-        const compRes = await api.post('/reports/compare', {
-          group_id: +selectedGroup,
-          month_a_id: +monthA,
-          month_b_id: +monthB,
-        });
-
-        // Use fetch with blob for Excel
-        const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/reports/export/excel`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ group_id: +selectedGroup, month_a_id: +monthA, month_b_id: +monthB }),
-        });
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'report.xlsx';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        setExporting('');
-        return;
-      } catch (err) {
-        setError('שגיאה בייצוא Excel — נסה שוב');
-        setExporting('');
-        return;
+      // Excel: backend returns JSON with base64 data
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          const res = await api.post('/reports/export/excel', payload, { timeout: 60000 });
+          const { data, filename } = res.data;
+          const binary = atob(data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          downloadBlob(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename || 'report.xlsx');
+          setExporting('');
+          setError('');
+          return;
+        } catch (err) {
+          if (attempt < retries) {
+            setError(`מנסה שוב... (${attempt}/${retries})`);
+            await new Promise(r => setTimeout(r, 5000));
+          } else {
+            setError('שגיאה בייצוא Excel — נסה שוב');
+          }
+        }
       }
-    }
-
-    // PDF stays with axios
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        const res = await api.post(`/reports/export/${type}`, {
-          group_id: +selectedGroup,
-          month_a_id: +monthA,
-          month_b_id: +monthB,
-        }, { responseType: 'blob', timeout: 60000 });
-        const url = window.URL.createObjectURL(new Blob([res.data]));
-        const a = document.createElement('a');
-        a.href = url;
-        const cd = res.headers['content-disposition'] || '';
-        const match = cd.match(/filename="?([^";\n]+)"?/);
-        a.download = match ? match[1] : `report.${type === 'pdf' ? 'pdf' : 'xlsx'}`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-        setExporting('');
-        setError('');
-        return;
-      } catch (err) {
-        if (attempt < retries) {
-          setError(`מנסה שוב... (${attempt}/${retries}) — השרת מתעורר`);
-          await new Promise(r => setTimeout(r, 5000));
-        } else {
-          setError('שגיאה בייצוא — נסה שוב בעוד דקה');
+    } else {
+      // PDF: backend returns blob
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          const res = await api.post(`/reports/export/${type}`, payload, { responseType: 'blob', timeout: 60000 });
+          const cd = res.headers['content-disposition'] || '';
+          const match = cd.match(/filename="?([^";\n]+)"?/);
+          downloadBlob(new Blob([res.data]), match ? match[1] : 'report.pdf');
+          setExporting('');
+          setError('');
+          return;
+        } catch (err) {
+          if (attempt < retries) {
+            setError(`מנסה שוב... (${attempt}/${retries}) — השרת מתעורר`);
+            await new Promise(r => setTimeout(r, 5000));
+          } else {
+            setError('שגיאה בייצוא — נסה שוב בעוד דקה');
+          }
         }
       }
     }

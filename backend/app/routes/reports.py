@@ -107,16 +107,16 @@ def export_excel(req: CompareRequest, db: Session = Depends(get_db), current_use
     results, avg_pct, label_a, label_b = run_comparison(db, group, req.month_a_id, req.month_b_id)
     title = f"השוואת מחירונים: {label_a} מול {label_b}"
     filename = f"report_{label_a}_{label_b}.xlsx".replace(" ", "_").replace(":", "-")
-    # Sanitize filename - ASCII only for Excel compatibility
     import re as _re
     filename = _re.sub(r'[^\x00-\x7F]', '', filename)
     filename = _re.sub(r'[^a-zA-Z0-9\-_\.]', '_', filename)
     if not filename.endswith('.xlsx') or filename == '.xlsx':
         filename = 'report.xlsx'
     filepath = generate_excel(results, title, avg_pct, filename)
-    return FileResponse(
-        filepath,
-        filename=filename,
-        media_type="application/octet-stream",
-        headers={"X-Download-Options": "noopen", "Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+
+    # Return as JSON with base64 data (bypasses corporate file-download filters)
+    import base64
+    with open(filepath, 'rb') as f:
+        file_data = base64.b64encode(f.read()).decode('utf-8')
+    os.remove(filepath)
+    return {"filename": filename, "data": file_data, "type": "xlsx"}
