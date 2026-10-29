@@ -7,7 +7,8 @@ import json
 import secrets
 from ..database import get_db
 from ..models.user import User, TrackingGroup, TrackingItem
-from ..models.price_data import PriceList, PriceEntry
+from ..models.price_data import PriceList, PriceEntry, Supplement
+from ..utils.supplements import parse_supplements, selection_json
 from ..models.activity import ActivityLog
 from ..utils.auth import hash_password, require_admin
 from ..utils.csv_parser import parse_csv
@@ -100,7 +101,7 @@ def inject_default_group(
     if template:
         template_items = db.query(TrackingItem).filter(TrackingItem.group_id == template.id).all()
         for ti in template_items:
-            db.add(TrackingItem(group_id=group.id, car_code=ti.car_code, years=ti.years))
+            db.add(TrackingItem(group_id=group.id, car_code=ti.car_code, years=ti.years, supplements=ti.supplements or '{}'))
         db.commit()
     
     return {"message": "קבוצת ברירת מחדל נוספה", "group_id": group.id}
@@ -176,16 +177,17 @@ def set_default_template(
     """Set the global default group template. When admin injects defaults for a user, items are copied from here."""
     # Find or create the template group
     template = db.query(TrackingGroup).filter(TrackingGroup.name == "__default_template__").first()
+    existing_items = db.query(TrackingItem).filter(TrackingItem.group_id == template.id).all() if template else []
+    selections = [selection_json(db, item, existing_items) for item in req.items]
     if not template:
         template = TrackingGroup(name="__default_template__", user_id=admin.id, is_default=False, is_visible=False)
         db.add(template)
-        db.commit()
-        db.refresh(template)
+        db.flush()
     
     # Replace items
     db.query(TrackingItem).filter(TrackingItem.group_id == template.id).delete()
-    for item in req.items:
-        db.add(TrackingItem(group_id=template.id, car_code=item["car_code"], years=json.dumps(item.get("years", []))))
+    for item, supplements in zip(req.items, selections):
+        db.add(TrackingItem(group_id=template.id, car_code=item["car_code"], years=json.dumps(item.get("years", [])), supplements=supplements))
     db.commit()
     
     return {"message": "תבנית ברירת מחדל עודכנה", "items_count": len(req.items)}
@@ -211,6 +213,7 @@ def get_default_template(
         result_items.append({
             "car_code": i.car_code,
             "years": json.loads(i.years),
+            "supplements": json.loads(i.supplements or '{}'),
             "model_name": model_name or "",
         })
     
@@ -275,7 +278,40 @@ async def upload_csv(
 @router.get("/price-lists")
 def list_price_lists(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     lists = db.query(PriceList).order_by(PriceList.year.desc(), PriceList.month.desc()).all()
-    return [{"id": pl.id, "label": pl.label, "filename": pl.filename, "entries_count": db.query(PriceEntry).filter(PriceEntry.price_list_id == pl.id).count()} for pl in lists]
+    return [{"id": pl.id, "label": pl.label, "filename": pl.filename, "entries_count": db.query(PriceEntry).filter(PriceEntry.price_list_id == pl.id).count(), "supplements_uploaded": bool(pl.supplements_uploaded), "supplements_count": db.query(Supplement).filter(Supplement.price_list_id == pl.id).count()} for pl in lists]
+
+@router.post('/price-lists/{list_id}/supplements')
+async def upload_supplements(list_id: int, file: UploadFile = File(...),
+                             db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    pl = db.get(PriceList, list_id)
+    if not pl:
+        raise HTTPException(404, 'מחירון לא נמצא')
+    if not (file.filename or '').lower().endswith('.xlsx'):
+        raise HTTPException(400, 'רק קבצי XLSX מותרים')
+    content = await file.read(20 * 1024 * 1024 + 1)
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(413, 'קובץ גדול מדי (20MB)')
+    try:
+        diagnostics = {}
+        records = parse_supplements(content, diagnostics)
+        if not records and (diagnostics['skipped_rows'] or diagnostics['ambiguous_keys']):
+            raise ValueError('אין רשומות תקינות')
+    except Exception:
+        raise HTTPException(400, 'קובץ תוספות לא תקין; בדקו כותרות, שנתונים ואחוזים')
+    # Parse completely before replacing; one transaction protects the old upload.
+    try:
+        db.query(Supplement).filter(Supplement.price_list_id == list_id).delete()
+        if records:
+            db.bulk_insert_mappings(Supplement, [dict(r, price_list_id=list_id) for r in records])
+        pl.supplements_uploaded = True
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {'price_list_id': list_id, 'supplements_uploaded': True,
+            'supplements_count': len(records), 'selectable_count': sum(r['selectable'] for r in records),
+            **diagnostics,
+            'message': 'קובץ התוספות הועלה בהצלחה'}
 
 @router.delete("/price-lists/{list_id}")
 def delete_price_list(list_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
@@ -283,6 +319,7 @@ def delete_price_list(list_id: int, db: Session = Depends(get_db), admin: User =
     if not pl:
         raise HTTPException(status_code=404, detail="מחירון לא נמצא")
     db.query(PriceEntry).filter(PriceEntry.price_list_id == list_id).delete()
+    db.query(Supplement).filter(Supplement.price_list_id == list_id).delete()
     db.delete(pl)
     db.commit()
     return {"message": "מחירון נמחק"}

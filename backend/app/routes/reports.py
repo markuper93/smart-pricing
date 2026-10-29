@@ -11,6 +11,7 @@ from ..models.price_data import PriceList, PriceEntry
 from ..utils.auth import get_current_user
 from ..utils.pdf_export import generate_pdf
 from ..utils.excel_export import generate_excel
+from ..utils.supplements import comparison_columns
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -60,6 +61,8 @@ def run_comparison(db: Session, group: TrackingGroup, month_a_id: int, month_b_i
                 f"עליה לכביש [{pl_b.label}] (שינוי)": f"{tax_b:,.0f} ({tax_diff_sign}{tax_diff:,.0f})" if tax_b else "-",
                 "שינוי באחוז": f"{pct_change:.2f}%",
                 "_pct_raw": pct_change,
+                **comparison_columns(db, item.car_code, year, json.loads(item.supplements or '{}').get(str(year), []),
+                                     pl_a, pl_b, ea.price if ea else None, eb.price if eb else None),
             })
     
     # Calculate average

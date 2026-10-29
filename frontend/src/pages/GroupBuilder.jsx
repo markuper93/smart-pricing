@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
+import SupplementPicker from '../components/SupplementPicker';
+import { supplementsForYears } from '../components/supplementSelection';
 import { Plus, Minus, Save, Trash2, Edit3, Check, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function GroupBuilder() {
   const [carCodes, setCarCodes] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selected, setSelected] = useState({});  // {car_code: [years]}
+  const [supplements, setSupplements] = useState({});
   const [expandedCode, setExpandedCode] = useState(null);
   const [availableYears, setAvailableYears] = useState({});
   const [groupName, setGroupName] = useState('');
@@ -55,7 +58,7 @@ export default function GroupBuilder() {
 
   const saveGroup = async () => {
     if (!groupName.trim()) { setMessage('יש להזין שם קבוצה'); return; }
-    const items = Object.entries(selected).map(([car_code, years]) => ({ car_code, years }));
+    const items = Object.entries(selected).map(([car_code, years]) => ({ car_code, years, supplements: supplementsForYears(supplements[car_code], years) }));
     if (items.length === 0) { setMessage('יש לבחור לפחות דגם אחד'); return; }
     setSaving(true);
     try {
@@ -70,6 +73,7 @@ export default function GroupBuilder() {
       setGroups(grps.data);
       setGroupName('');
       setSelected({});
+      setSupplements({});
       setEditingGroup(null);
     } catch (err) {
       setMessage(err.response?.data?.detail || 'שגיאה בשמירה');
@@ -83,6 +87,7 @@ export default function GroupBuilder() {
     const sel = {};
     group.items.forEach(item => { sel[item.car_code] = item.years; });
     setSelected(sel);
+    setSupplements(Object.fromEntries(group.items.map(item => [item.car_code, item.supplements || {}])));
   };
 
   const deleteGroup = async (id) => {
@@ -189,13 +194,22 @@ export default function GroupBuilder() {
                 <Save className="w-4 h-4" /> {saving ? 'שומר...' : 'שמור'}
               </button>
               {editingGroup && (
-                <button onClick={() => { setEditingGroup(null); setGroupName(''); setSelected({}); }}
+                <button onClick={() => { setEditingGroup(null); setGroupName(''); setSelected({}); setSupplements({}); }}
                   className="px-4 py-2.5 bg-dark-700 hover:bg-dark-600 text-white rounded-lg transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
             {message && <p className="text-sm text-primary-300 mt-2">{message}</p>}
+            {selectedCount > 0 && <div className="mt-4 max-h-[60vh] overflow-y-auto">
+              <h4 className="text-white font-medium">תוספות לדגמים שנבחרו</h4>
+              {Object.entries(selected).map(([code, years]) => <div key={code}>
+                <button type="button" disabled={saving} onClick={() => clearCode(code)} className="text-xs text-dark-400 mt-3 hover:text-red-300">הסר דגם {code}</button>
+                {years.map(year => <SupplementPicker key={`${code}:${year}`} code={code} year={year}
+                  value={supplements[code]?.[String(year)] || []} disabled={saving}
+                  onChange={keys => setSupplements(prev => ({ ...prev, [code]: { ...prev[code], [String(year)]: keys } }))} />)}
+              </div>)}
+            </div>}
           </div>
 
           <div className="glass p-5">

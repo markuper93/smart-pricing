@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import json
 from ..database import get_db
 from ..models.user import User, TrackingGroup, TrackingItem
 from ..models.price_data import PriceList, PriceEntry
 from ..utils.auth import get_current_user
+from ..utils.supplements import latest_list, applicable, serialize, selection_json, validate_selection
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
@@ -61,6 +62,15 @@ def get_years_for_code(car_code: str, db: Session = Depends(get_db), current_use
     return [y[0] for y in years]
 
 # ── Tracking Groups ──
+@router.get("/car-codes/{car_code}/supplements")
+def get_supplements(car_code: str, year: int, price_list_id: Optional[int] = None,
+                    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    pl = db.get(PriceList, price_list_id) if price_list_id is not None else latest_list(db)
+    if price_list_id is not None and not pl:
+        raise HTTPException(404, 'מחירון לא נמצא')
+    return {'price_list_id': pl.id if pl else None, 'available': bool(pl and pl.supplements_uploaded),
+            'items': [serialize(r) for r in applicable(db, pl.id, car_code, year)] if pl and pl.supplements_uploaded else []}
+
 class CreateGroupRequest(BaseModel):
     name: str
     items: List[dict]  # [{car_code: "481", years: [2022,2023]}]
@@ -89,18 +99,18 @@ def list_groups(db: Session = Depends(get_db), current_user: User = Depends(get_
             "is_default": g.is_default,
             "is_visible": g.is_visible,
             "created_at": g.created_at.isoformat() if g.created_at else None,
-            "items": [{"id": i.id, "car_code": i.car_code, "years": json.loads(i.years)} for i in items],
+            "items": [{"id": i.id, "car_code": i.car_code, "years": json.loads(i.years), "supplements": json.loads(i.supplements or '{}')} for i in items],
         })
     return result
 
 @router.post("/groups")
 def create_group(req: CreateGroupRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    selections = [selection_json(db, item) for item in req.items]
     group = TrackingGroup(name=req.name, user_id=current_user.id)
     db.add(group)
-    db.commit()
-    db.refresh(group)
-    for item in req.items:
-        ti = TrackingItem(group_id=group.id, car_code=item["car_code"], years=json.dumps(item.get("years", [])))
+    db.flush()
+    for item, supplements in zip(req.items, selections):
+        ti = TrackingItem(group_id=group.id, car_code=item["car_code"], years=json.dumps(item.get("years", [])), supplements=supplements)
         db.add(ti)
     db.commit()
     return {"id": group.id, "name": group.name, "message": "קבוצה נוצרה בהצלחה"}
@@ -113,9 +123,11 @@ def update_group(group_id: int, req: UpdateGroupRequest, db: Session = Depends(g
     if req.name:
         group.name = req.name
     if req.items is not None:
+        existing_items = db.query(TrackingItem).filter(TrackingItem.group_id == group_id).all()
+        selections = [selection_json(db, item, existing_items) for item in req.items]
         db.query(TrackingItem).filter(TrackingItem.group_id == group_id).delete()
-        for item in req.items:
-            ti = TrackingItem(group_id=group.id, car_code=item["car_code"], years=json.dumps(item.get("years", [])))
+        for item, supplements in zip(req.items, selections):
+            ti = TrackingItem(group_id=group.id, car_code=item["car_code"], years=json.dumps(item.get("years", [])), supplements=supplements)
             db.add(ti)
     db.commit()
     return {"message": "קבוצה עודכנה"}
@@ -134,6 +146,7 @@ def delete_group(group_id: int, db: Session = Depends(get_db), current_user: Use
 class AddItemRequest(BaseModel):
     car_code: str
     years: List[int]
+    supplements: dict[str, list[str]] = Field(default_factory=dict)
 
 class RemoveItemRequest(BaseModel):
     car_code: str
@@ -151,15 +164,17 @@ def add_item_to_group(
         raise HTTPException(status_code=404, detail="קבוצה לא נמצאה")
     # Check if already exists
     existing = db.query(TrackingItem).filter(TrackingItem.group_id == group_id, TrackingItem.car_code == req.car_code).first()
+    selections = validate_selection(db, req.car_code, req.years, req.supplements, [existing] if existing else [])
     if existing:
         # Update years
         existing.years = json.dumps(req.years)
+        existing.supplements = json.dumps(selections)
         db.commit()
-        return {"message": "שנתונים עודכנו", "car_code": req.car_code}
-    ti = TrackingItem(group_id=group_id, car_code=req.car_code, years=json.dumps(req.years))
+        return {"message": "שנתונים עודכנו", "car_code": req.car_code, "supplements": selections}
+    ti = TrackingItem(group_id=group_id, car_code=req.car_code, years=json.dumps(req.years), supplements=json.dumps(selections))
     db.add(ti)
     db.commit()
-    return {"message": "רכב נוסף לקבוצה", "car_code": req.car_code}
+    return {"message": "רכב נוסף לקבוצה", "car_code": req.car_code, "supplements": selections}
 
 
 @router.delete("/groups/{group_id}/items/{car_code}")

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import api from '../api/client';
 import { FileDown, FileSpreadsheet, Play, TrendingDown, TrendingUp } from 'lucide-react';
 
@@ -169,16 +169,25 @@ export default function Reports() {
                 </thead>
                 <tbody>
                   {report.data.map((row, i) => (
-                    <tr key={i}>
+                    <Fragment key={i}><tr>
                       {Object.entries(row).map(([k, v], j) => {
                         let className = '';
                         if (k === 'שינוי באחוז') {
                           const num = parseFloat(v);
                           className = num > 0 ? 'positive' : num < 0 ? 'negative' : '';
                         }
-                        return <td key={j} className={className}>{v}</td>;
+                        return <td key={j} className={`${className} ${k.includes('תוספות') ? 'whitespace-pre-line' : ''}`}>{v}</td>;
                       })}
                     </tr>
+                    {Object.keys(row).some(key => key.includes('בסיס + תוספות')) && <tr className="bg-primary-600/10">
+                      <td colSpan={Object.keys(row).length}>
+                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-primary-200 text-sm">
+                          {Object.entries(row).filter(([key]) => key.includes('בסיס + תוספות')).map(([key, value]) => <span key={key}><strong>{key}:</strong> {value}</span>)}
+                          <span className="text-dark-400 text-xs">ללא אגרת עלייה לכביש</span>
+                        </div>
+                      </td>
+                    </tr>}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

@@ -18,7 +18,7 @@ def generate_excel(report_data: List[Dict[str, Any]], title: str, avg_change: fl
     header_font = Font(name="Arial", bold=True, color="FFFFFF", size=10)
     header_fill = PatternFill(start_color="1a1a2e", end_color="1a1a2e", fill_type="solid")
     header_align = Alignment(horizontal="right", vertical="center", wrap_text=True)
-    cell_align = Alignment(horizontal="right", vertical="center")
+    cell_align = Alignment(horizontal="right", vertical="center", wrap_text=True)
     thin_border = Border(
         left=Side(style="thin"), right=Side(style="thin"),
         top=Side(style="thin"), bottom=Side(style="thin")
@@ -40,9 +40,14 @@ def generate_excel(report_data: List[Dict[str, Any]], title: str, avg_change: fl
     
     # Write data
     for row_idx, row_data in enumerate(report_data, 2):
+        import math
+        lines = max(sum(max(1, math.ceil(len(part) / 28)) for part in str(value).split('\n')) for value in row_data.values())
+        ws.row_dimensions[row_idx].height = min(409, max(30, lines * 15))
         for col_idx, header in enumerate(headers, 1):
             val = row_data.get(header, "")
             cell = ws.cell(row=row_idx, column=col_idx, value=val)
+            if isinstance(val, str):
+                cell.data_type = 's'  # Descriptions are text, never Excel formulas.
             cell.alignment = cell_align
             cell.border = thin_border
             cell.font = Font(name="Arial", size=10)

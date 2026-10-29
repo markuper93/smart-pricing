@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api/client';
+import SupplementUpload from '../components/SupplementUpload';
+import SupplementPicker from '../components/SupplementPicker';
 import { Upload, UserPlus, Trash2, RotateCcw, Key, Database, Users, FileText, ChevronDown, Shield, Eye, EyeOff, RefreshCw, Activity, Clock, Globe } from 'lucide-react';
 
 export default function AdminPanel() {
@@ -8,6 +10,7 @@ export default function AdminPanel() {
   const [priceLists, setPriceLists] = useState([]);
   const [defaultGroups, setDefaultGroups] = useState([]);
   const [defaultTemplate, setDefaultTemplate] = useState({ exists: false, items: [] });
+  const [templateSaving, setTemplateSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ text: '', type: '' });
 
@@ -132,6 +135,15 @@ export default function AdminPanel() {
     await api.delete(`/admin/price-lists/${id}`);
     showMsg('מחירון נמחק');
     loadData();
+  };
+
+  const saveTemplateSupplements = async () => {
+    setTemplateSaving(true);
+    try {
+      await api.post('/admin/default-template', { items: defaultTemplate.items });
+      showMsg('תוספות התבנית נשמרו. קבוצות קיימות אינן משתנות אוטומטית.');
+    } catch (err) { showMsg(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'שגיאה בשמירת תוספות התבנית', 'error'); }
+    finally { setTemplateSaving(false); }
   };
 
   // Activity functions
@@ -284,7 +296,7 @@ export default function AdminPanel() {
               <div className="overflow-x-auto max-h-64 overflow-y-auto">
                 <table className="report-table">
                   <thead>
-                    <tr><th>קוד</th><th>דגם</th><th>שנתונים</th></tr>
+                    <tr><th>קוד</th><th>דגם</th><th>שנתונים</th><th>תוספות</th></tr>
                   </thead>
                   <tbody>
                     {defaultTemplate.items.map((item, i) => (
@@ -292,6 +304,9 @@ export default function AdminPanel() {
                         <td className="font-mono text-primary-300">{item.car_code}</td>
                         <td className="text-white text-sm">{item.model_name || item.car_code}</td>
                         <td>{item.years?.join(', ')}</td>
+                        <td>{item.years?.map(year => <SupplementPicker key={`${item.car_code}:${year}`} code={item.car_code} year={year}
+                          value={item.supplements?.[String(year)] || []} disabled={templateSaving}
+                          onChange={keys => setDefaultTemplate(prev => ({ ...prev, items: prev.items.map((entry, index) => index === i ? { ...entry, supplements: { ...entry.supplements, [String(year)]: keys } } : entry) }))} />)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -300,6 +315,7 @@ export default function AdminPanel() {
             ) : (
               <p className="text-dark-400">אין תבנית מוגדרת. העלאה דרך API.</p>
             )}
+            {defaultTemplate.exists && <button type="button" disabled={templateSaving} onClick={saveTemplateSupplements} className="mt-3 px-4 py-2 rounded bg-primary-600 text-white disabled:opacity-50">{templateSaving ? 'שומר...' : 'שמור תוספות בתבנית'}</button>}
           </div>
 
           {/* Users Default Groups */}
@@ -421,7 +437,7 @@ export default function AdminPanel() {
           </div>
           <div className="overflow-x-auto">
             <table className="report-table">
-              <thead><tr><th>ID</th><th>תווית</th><th>קובץ</th><th>רשומות</th><th>פעולות</th></tr></thead>
+              <thead><tr><th>ID</th><th>תווית</th><th>קובץ</th><th>רשומות</th><th>קובץ תוספות</th><th>פעולות</th></tr></thead>
               <tbody>
                 {priceLists.map(pl => (
                   <tr key={pl.id}>
@@ -429,12 +445,13 @@ export default function AdminPanel() {
                     <td className="font-medium text-white">{pl.label}</td>
                     <td className="text-dark-400">{pl.filename}</td>
                     <td>{pl.entries_count}</td>
+                    <td><SupplementUpload priceList={pl} onUploaded={async () => { const res = await api.get('/admin/price-lists'); setPriceLists(res.data); }} /></td>
                     <td>
                       <button onClick={() => deletePriceList(pl.id)} className="p-1.5 rounded hover:bg-dark-700 text-dark-400 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
                     </td>
                   </tr>
                 ))}
-                {priceLists.length === 0 && <tr><td colSpan="5" className="text-center text-dark-400 py-4">אין מחירונים</td></tr>}
+                {priceLists.length === 0 && <tr><td colSpan="6" className="text-center text-dark-400 py-4">אין מחירונים</td></tr>}
               </tbody>
             </table>
           </div>

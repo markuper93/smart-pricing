@@ -1,5 +1,6 @@
 import os
 import tempfile
+from xml.sax.saxutils import escape
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import cm, mm
@@ -157,13 +158,13 @@ def generate_pdf(report_data: List[Dict[str, Any]], title: str, avg_change: floa
                         style = cell_negative
                 except ValueError:
                     pass
-            row_cells.append(Paragraph(rtl(val), style))
+            row_cells.append(Paragraph('<br/>'.join(escape(rtl(line)) for line in val.split('\n')), style))
         table_data.append(row_cells)
     
     # Calculate column widths - distribute evenly
     available_width = page_w - 2*cm
-    col_width = available_width / len(headers)
-    col_widths = [col_width] * len(headers)
+    weights = [2.5 if h == 'תוספות' else 1.5 if h in ('דגם', 'בסיס + תוספות') else 1 for h in headers_reversed]
+    col_widths = [available_width * w / sum(weights) for w in weights]
     
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([

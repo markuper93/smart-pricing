@@ -36,4 +36,5 @@ class TrackingItem(Base):
     group_id = Column(Integer, ForeignKey("tracking_groups.id"), nullable=False)
     car_code = Column(String(50), nullable=False)
     years = Column(Text, nullable=False)
+    supplements = Column(Text, nullable=False, default="{}", server_default="{}")
     group = relationship("TrackingGroup", back_populates="items")

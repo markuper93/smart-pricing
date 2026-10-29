@@ -17,6 +17,8 @@ from .config import (
 
 # Create tables
 Base.metadata.create_all(bind=engine)
+from .migrations import migrate_supplements
+migrate_supplements(engine)
 
 app = FastAPI(title="מחירון חכם - Smart Price List", version="1.0.0")
 
